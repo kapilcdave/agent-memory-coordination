@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Agent Memory Coordination</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #17202a;
+        --muted: #5c6670;
+        --line: #d8dee5;
+        --panel: #ffffff;
+        --bg: #f4f6f8;
+        --accent: #0f766e;
+        --warn: #b45309;
+        --block: #b91c1c;
+      }
+      body {
+        margin: 0;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: var(--bg);
+        color: var(--ink);
+      }
+      header {
+        padding: 20px 24px;
+        border-bottom: 1px solid var(--line);
+        background: #ffffff;
+      }
+      h1 {
+        margin: 0;
+        font-size: 20px;
+        letter-spacing: 0;
+      }
+      main {
+        display: grid;
+        grid-template-columns: minmax(260px, 1fr) minmax(320px, 1.4fr);
+        gap: 16px;
+        padding: 16px 24px 24px;
+      }
+      section {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        min-height: 320px;
+      }
+      h2 {
+        margin: 0;
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--line);
+        font-size: 14px;
+      }
+      .list {
+        display: grid;
+        gap: 10px;
+        padding: 12px;
+      }
+      .item {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 12px;
+        background: #fbfcfd;
+      }
+      .row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+      }
+      .agent {
+        font-weight: 700;
+      }
+      .scope {
+        color: var(--accent);
+      }
+      .meta {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 12px;
+        overflow-wrap: anywhere;
+      }
+      .badge {
+        border-radius: 999px;
+        padding: 3px 8px;
+        font-size: 12px;
+        font-weight: 700;
+        color: #ffffff;
+        background: var(--warn);
+      }
+      .badge.block {
+        background: var(--block);
+      }
+      @media (max-width: 760px) {
+        main {
+          grid-template-columns: 1fr;
+          padding: 12px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Agent Memory Coordination</h1>
+    </header>
+    <main>
+      <section>
+        <h2>Active Intents</h2>
+        <div id="intents" class="list"></div>
+      </section>
+      <section>
+        <h2>Conflict Stream</h2>
+        <div id="conflicts" class="list"></div>
+      </section>
+    </main>
+    <script>
+      const intentsEl = document.querySelector("#intents");
+      const conflictsEl = document.querySelector("#conflicts");
+
+      async function refreshIntents() {
+        const response = await fetch("/intents");
+        const payload = await response.json();
+        intentsEl.innerHTML = payload.intents.map((intent) => `
+          <article class="item">
+            <div class="row">
+              <span class="agent">${escapeHtml(intent.agentId)}</span>
+              <span class="scope">${escapeHtml(intent.scope)}</span>
+            </div>
+            <div class="meta">${escapeHtml(intent.action)} · ${escapeHtml(intent.files.join(", ") || "no files declared")}</div>
+          </article>
+        `).join("") || '<div class="meta">No active intents</div>';
+      }
+
+      function addConflict(conflict) {
+        const item = document.createElement("article");
+        item.className = "item";
+        item.innerHTML = `
+          <div class="row">
+            <span class="agent">${escapeHtml(conflict.type)}</span>
+            <span class="badge ${conflict.severity === "block" ? "block" : ""}">${escapeHtml(conflict.severity)}</span>
+          </div>
+          <div class="meta">${escapeHtml(conflict.agents.join(" ↔ "))}</div>
+          <div class="meta">${escapeHtml(conflict.suggestedResolution)}</div>
+        `;
+        conflictsEl.prepend(item);
+      }
+
+      function escapeHtml(value) {
+        return String(value).replace(/[&<>"']/g, (char) => ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#039;"
+        }[char]));
+      }
+
+      const stream = new EventSource("/stream");
+      stream.addEventListener("conflict", (event) => {
+        addConflict(JSON.parse(event.data));
+        refreshIntents();
+      });
+
+      refreshIntents();
+      setInterval(refreshIntents, 2500);
+    </script>
+  </body>
+</html>
